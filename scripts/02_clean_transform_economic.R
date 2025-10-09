@@ -62,12 +62,11 @@ gold_full_cleaned <- gold_full_cleaned %>%
          close_return_pct = (close / dplyr::lag(close)) - 1)
 
 # 2) Overwrite the RData file with updated data frames
-save_path <- "/Users/cycoldiron/Desktop/gold-ts-forecast/data/cleaned/01_full_raw_data.RData"
+save_path <- "/Users/cycoldiron/Desktop/gold-ts-forecast/data/clean/01_clean_economic_data.RData"
 
 save(
   gold_full_cleaned,
   tips_full_cleaned,
   usd_full_cleaned,
-  vix_full_cleaned,
   file = save_path
 )
