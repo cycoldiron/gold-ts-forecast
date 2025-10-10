@@ -6,7 +6,7 @@ library(rlang)
 
 # --- EPU (monthly) ------------------------------------------------------------
 # epu_raw columns seen: Year, Month, News_Based_Policy_Uncert_Index
-epu_clean <- epu_raw %>%
+epu_full_clean <- epu_raw %>%
   clean_names() %>%
   transmute(
     year   = as.integer(year),
@@ -20,7 +20,7 @@ epu_clean <- epu_raw %>%
 # --- GPR (monthly) ------------------------------------------------------------
 # gpr_raw columns vary by file; we coalesce "new" (GPR/GPRT/GPRA) and "historical" (GPRH/GPRHT/GPRHA)
 # 'month' in your str() is POSIXct monthly; we convert to yearmon -> Date (month end)
-gpr_clean <- gpr_raw %>%
+gpr_full_clean <- gpr_raw %>%
   clean_names() %>%
   mutate(date_m = as.Date(as.yearmon(month))) %>%
   transmute(
