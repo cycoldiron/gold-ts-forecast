@@ -57,7 +57,7 @@ gt_ic <- tab_ic |>
     )
   ) |>
   opt_row_striping() |>
-  tab_source_note(md("Source: Stooq (XAUUSD), author’s calculations."))
+  tab_source_note(md("Source: Stooq (XAUUSD), author’s calculationsplease just write out the whole code:."))
 
 gt::gtsave(gt_ic, filename = file.path(out_dir, "mean_model_comparison.png"))
 

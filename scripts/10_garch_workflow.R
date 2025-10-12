@@ -66,8 +66,10 @@ ml_tbl <- bind_rows(lapply(1:max_lag, function(L) {
   tibble(Lag = L, Q = unname(bt$statistic), p = bt$p.value)
 }))
 gt_ml <- ml_tbl |>
-  mutate(Q = round(Q, 3), `p-value` = fmt_p(p)) |>
+  mutate(Q = round(Q, 3),
+         `p-value` = fmt_p(p)) |>
   rename(`Q (LB on r²)` = Q) |>
+  select(Lag, `Q (LB on r²)`, `p-value`) |>
   gt() |>
   tab_header(
     title    = md("**McLeod–Li Portmanteau Test (Squared Returns)**"),
@@ -115,7 +117,7 @@ p_acf_r2 <- acf_df(r^2, 40) |>
   geom_ribbon(aes(ymin = -ci, ymax = ci), alpha = 0.08) +
   geom_hline(yintercept = c(-ci, ci), linetype = "dashed") +
   geom_col(width = 0.8) +
-  labs(title = expression(paste("ACF of Absolute Returns Squared (", r^2, ") — Daily Gold Log Returns")),
+  labs(title = "ACF of Absolute Returns Squared (r²) — Daily Gold Log Returns",
        x = "Lag (trading days)", y = "ACF") +
   theme_minimal(base_size = 12) +
   theme(plot.title = element_text(face = "bold", hjust = 0.5))
@@ -186,12 +188,12 @@ best_idx  <- if (length(valid_idx)) valid_idx[which.min(ic_rows$AIC[valid_idx])]
 best_lab  <- ic_rows$Model[best_idx]
 best_fit  <- fit_list[[best_lab]]
 
-# Persistence & half-life (when alpha/beta exist)
+# Persistence & half-life (with user-friendly label when undefined)
 cf <- tryCatch(coef(best_fit), error = function(e) NULL)
 alpha <- tryCatch(unname(cf["alpha1"]), error = function(e) NA_real_)
 beta  <- tryCatch(unname(cf["beta1"]),  error = function(e) NA_real_)
 persist <- if (is.na(alpha) || is.na(beta)) NA_real_ else alpha + beta
-half_life <- if (!is.na(persist) && persist > 0 && persist < 1) log(0.5)/log(persist) else NA_real_
+half_life_num <- if (!is.na(persist) && persist > 0 && persist < 1) log(0.5)/log(persist) else NA_real_
 
 subtitle_persist <- if (is.na(persist)) {
   "EGARCH/GJR do not always yield α, β; persistence interpreted via their own parameters."
@@ -201,12 +203,15 @@ subtitle_persist <- if (is.na(persist)) {
   "Persistence near 1 ⇒ long memory; half-life shows decay speed."
 }
 
+half_life_label <- if (is.na(half_life_num)) "Not defined (α+β ≥ 1 or no α,β)" else sprintf("%.2f", half_life_num)
+
 gt_persist <- tibble(
-  Model = best_lab, alpha = alpha, beta = beta,
-  `alpha + beta` = persist, `Half-life (days)` = half_life
+  Model = best_lab,
+  alpha = round(alpha, 4),
+  beta  = round(beta, 4),
+  `alpha + beta` = round(persist, 4),
+  `Half-life (days)` = half_life_label
 ) |>
-  mutate(across(where(is.numeric), ~round(.x, 4)),
-         `Half-life (days)` = ifelse(is.na(`Half-life (days)`), NA, round(`Half-life (days)`, 2))) |>
   gt() |>
   tab_header(title = md("**Volatility Persistence — Selected Model**"),
              subtitle = subtitle_persist) |>
