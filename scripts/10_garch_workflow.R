@@ -276,3 +276,164 @@ capture.output(show(best_fit), file = file.path(out_dir, "10_fit_summary.txt"))
 
 message("Done. PNGs and TXT saved to: ", out_dir)
 print(dir_ls(out_dir))
+
+
+# =============================================================================
+# 2b) EGARCH(1,1) PARAMETER TABLE (gt)
+# =============================================================================
+
+eg_label <- "EGARCH(1,1) — Student-t"
+eg_fit   <- fit_list[[eg_label]]
+
+if (!is.null(eg_fit) && eg_fit@fit$convergence == 0) {
+  # Pull conventional and robust coefficient tables
+  mat_conv <- tryCatch(as.data.frame(eg_fit@fit$matcoef), error = function(e) NULL)
+  mat_rob  <- tryCatch(as.data.frame(eg_fit@fit$robust.matcoef), error = function(e) NULL)
+  
+  # Ensure expected column names
+  std_cols <- c("Estimate","Std. Error","t value","Pr(>|t|)")
+  if (!all(std_cols %in% names(mat_conv))) {
+    stop("Unexpected coefficient table columns for EGARCH. Inspect eg_fit@fit$matcoef.")
+  }
+  if (!is.null(mat_rob) && !all(std_cols %in% names(mat_rob))) {
+    # If robust table missing or malformed, ignore robust columns gracefully
+    mat_rob <- NULL
+  }
+  
+  # Parameter ordering & pretty labels
+  param_order <- c("mu","omega","alpha1","beta1","gamma1","shape")
+  pretty_lab  <- c(
+    mu     = "Mean (μ)",
+    omega  = "ω (log-variance const.)",
+    alpha1 = "α₁ (leverage/‘news’)",
+    beta1  = "β₁ (log-variance persistence)",
+    gamma1 = "γ₁ (asymmetry)",
+    shape  = "ν (t dof)"
+  )
+  sym_lab <- c(
+    mu     = "μ",
+    omega  = "ω",
+    alpha1 = "α₁",
+    beta1  = "β₁",
+    gamma1 = "γ₁",
+    shape  = "ν"
+  )
+  
+  # Build tidy table
+  conv_tbl <- mat_conv[param_order, , drop = FALSE]
+  conv_tbl$Parameter <- unname(pretty_lab[rownames(conv_tbl)])
+  conv_tbl$Symbol    <- unname(sym_lab[rownames(conv_tbl)])
+  
+  if (!is.null(mat_rob)) {
+    rob_tbl <- mat_rob[param_order, , drop = FALSE]
+    df_params <- tibble::tibble(
+      Parameter = conv_tbl$Parameter,
+      Symbol    = conv_tbl$Symbol,
+      Estimate  = conv_tbl[["Estimate"]],
+      `SE`      = conv_tbl[["Std. Error"]],
+      `t`       = conv_tbl[["t value"]],
+      `p`       = conv_tbl[["Pr(>|t|)"]],
+      `SE (robust)` = rob_tbl[["Std. Error"]],
+      `t (robust)`  = rob_tbl[["t value"]],
+      `p (robust)`  = rob_tbl[["Pr(>|t|)"]]
+    )
+  } else {
+    df_params <- tibble::tibble(
+      Parameter = conv_tbl$Parameter,
+      Symbol    = conv_tbl$Symbol,
+      Estimate  = conv_tbl[["Estimate"]],
+      `SE`      = conv_tbl[["Std. Error"]],
+      `t`       = conv_tbl[["t value"]],
+      `p`       = conv_tbl[["Pr(>|t|)"]],
+      `SE (robust)` = NA_real_,
+      `t (robust)`  = NA_real_,
+      `p (robust)`  = NA_real_
+    )
+  }
+  
+  # Helpers for formatting
+  sigstars <- function(p) {
+    dplyr::case_when(
+      is.na(p)            ~ "",
+      p < 0.001           ~ "***",
+      p < 0.01            ~ "**",
+      p < 0.05            ~ "*",
+      p < 0.1             ~ "·",
+      TRUE                ~ ""
+    )
+  }
+  fmt_p_col <- function(x) ifelse(is.na(x), NA_character_, ifelse(x < 1e-3, "< 0.001", sprintf("%.3f", x)))
+  
+  # Compute EGARCH persistence and half-life (β₁ governs log-variance persistence)
+  beta1 <- tryCatch(unname(coef(eg_fit)["beta1"]), error = function(e) NA_real_)
+  eg_persist <- beta1
+  eg_half_life <- if (!is.na(beta1) && beta1 > 0 && beta1 < 1) log(0.5) / log(beta1) else NA_real_
+  
+  # Format numbers
+  df_params_fmt <- df_params %>%
+    mutate(
+      Estimate     = round(Estimate, 6),
+      `SE`         = round(`SE`, 6),
+      `t`          = round(`t`, 3),
+      `p`          = fmt_p_col(`p`),
+      `SE (robust)`= round(`SE (robust)`, 6),
+      `t (robust)` = round(`t (robust)`, 3),
+      `p (robust)` = fmt_p_col(`p (robust)`),
+      `Sig.`       = sigstars(readr::parse_number(`p`)),
+      `Sig. (robust)` = sigstars(readr::parse_number(`p (robust)`))
+    ) %>%
+    select(Parameter, Symbol, Estimate, `SE`, `t`, `p`, `Sig.`, `SE (robust)`, `t (robust)`, `p (robust)`, `Sig. (robust)`)
+  
+  # Build gt table
+  gt_eg <- df_params_fmt %>%
+    gt() %>%
+    tab_header(
+      title = md("**EGARCH(1,1) — Parameter Estimates (Student-t)**"),
+      subtitle = md(paste0(
+        "Model: *log σ²<sub>t</sub> = ω + β₁ log σ²<sub>t−1</sub> + α₁ z<sub>t−1</sub> + γ₁ (|z<sub>t−1</sub>| − E|z|)*",
+        "<br>N = ", n_obs, " | Mean included: ", ifelse(keep_mu, "Yes", "No")
+      ))
+    ) %>%
+    opt_row_striping() %>%
+    cols_label(
+      Parameter = "Parameter",
+      Symbol = "Symbol",
+      Estimate = "Estimate",
+      `SE` = "SE",
+      `t` = "t",
+      `p` = "p",
+      `Sig.` = "Sig.",
+      `SE (robust)` = "SE (rob.)",
+      `t (robust)`  = "t (rob.)",
+      `p (robust)`  = "p (rob.)",
+      `Sig. (robust)` = "Sig. (rob.)"
+    ) %>%
+    cols_width(
+      Parameter ~ px(260),
+      Symbol ~ px(90),
+      Estimate ~ px(120),
+      `SE` ~ px(110), `t` ~ px(90), `p` ~ px(110), `Sig.` ~ px(70),
+      `SE (robust)` ~ px(120), `t (robust)` ~ px(110), `p (robust)` ~ px(120), `Sig. (robust)` ~ px(110)
+    ) %>%
+    tab_source_note(
+      source_note = md(
+        paste0(
+          "**Notes.** β₁ is the log-variance persistence (closer to 1 ⇒ longer memory). ",
+          "Half-life = ln(0.5)/ln(β₁) when 0 < β₁ < 1. ",
+          "Robust SEs are sandwich (quasi-MLE). Significance stars: *** p<0.001, ** p<0.01, * p<0.05, · p<0.10."
+        )
+      )
+    ) %>%
+    tab_footnote(
+      footnote = md(paste0(
+        "**Persistence & half-life:** β₁ = ", ifelse(is.na(eg_persist), "NA", sprintf("%.4f", eg_persist)),
+        "; Half-life (days) = ", ifelse(is.na(eg_half_life), "Not defined", sprintf("%.2f", eg_half_life))
+      )),
+      locations = cells_title(groups = "subtitle")
+    )
+  
+  save_gt_png(gt_eg, "09_egarch_param_table", width = 1400, height = 720)
+} else {
+  message("EGARCH(1,1) fit not available or did not converge; skipping parameter table.")
+}
+
