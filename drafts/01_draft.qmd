@@ -1,0 +1,386 @@
+---
+title: "Modeling and Forecasting Gold Volatility"
+author: "Cy COldiron"
+format: pdf
+editor: visual
+---
+
+## Abstract
+
+This project investigates the underlying time-series dynamics of gold volatility. Using daily XAU/USD data from 1990 to the present, I identify volatility regimes, estimate competing ARCH models, and evaluate their out-of-sample forecast performance. My results suggest the mean of gold log returns is white noise while the highest performing variance forecasting model is a rolling EGARCH(1,1) with a regime dummy. My results suggest the presence of both volatility clustering (high variance is followed by high variance) and a reverse leverage effect: gold volatility responds more strongly to positive shocks than to negative ones. Considering the recent proliferation of gold prices, these findings are especially important for investors, portfolio managers, and central bankers in understanding the fundamental dynamics — and risks — posed by Gold.
+
+# 1.1 Introduction
+
+Since the end of the Bretton Woods system in 1971, Gold has played a markedly different role in global financial markets — going from a fixed-price and tied to the U.S dollar to a freely traded asset used to hedge uncertainty and inflation. With Gold prices rising over 50% YTD, and 130% since 2020 (greatly outperforming the S&P 500). Moreover, in a rapidly changing financial ecosystem characterized by de-globalization, tariffs, and rising geopolitical tensions — Gold is now at the forefront of  growing discussions on the commodities role in portfolio allocation, risk mitigation, and central bank balance sheets. Understanding the statistical properties underlying this Gold’s behavior is therefore both timely and important.
+
+By investigating these properties, we hope to answer the following: 
+
+1.  How has gold’s volatility evolved across distinct historical regimes such as the Global Financial Crisis and the COVID-19 period?
+
+2.  Which EGARCH specification best captures and forecasts conditional variance?
+
+3.  What do the model parameters reveal about gold’s sensitivity to positive versus negative price movements and its co-movement with uncertainty indices?
+
+A core component of this analysis deals with the two concepts central to modeling volatility in financial time series: clustering and asymmetric leverage. Clustering is the tendency for periods of high variance to follow high variance, while asymmetric leverage refers to volatility reacting differently to positive and negative price shocks. Most financial time series data, such as stocks and equities, primarily exhibit a leverage effect — negative shocks raise volatility more than positive ones. While our results suggest the presence of volatility clustering, it also indicates a reverse leverage effect: gold volatility responds more strongly to positive shocks than to negative ones.
+
+Grasping the nuances of these two characteristics—volatility clustering and asymmetry—is crucial for portfolio managers, investors, and central bankers. By integrating an understanding of volatility regimes and Gold’s unusual sensitivity to positive shocks, these stakeholders can more effectively assess the risks, impacts, and opportunities this asset class presents for their organizations and decision-makers.
+
+# 2 Data
+
+## 2.1 Gold Data
+
+We use daily gold price data (XAU/USD) obtained from Stooq, covering the period January 1990 to October 2025. All prices represent daily closing values quoted in U.S. dollars per troy ounce. As the data only contains official trading days (ie, weekends are not included), the dataset contains 9,191 price observations. This timeframe — which spans multiple macro financial cycles and crises — provides sufficient variation for both volatility and structural analysis.
+
+## 2.2 Data Transformation
+
+For our analysis, Gold prices were converted to log returns as
+
+\$\$
+
+r_t = 100 \\times \\big(\\ln P_t - \\ln P\_{t-1}\\big).
+
+\$\$
+
+where PtPt​ denotes the closing price at time tt.\
+Scaling by 100 yields approximate percentage log-returns, consistent with econometrics best practices.
+
+```{r}
+#| label: fig-gold-overview
+#| echo: false
+#| fig-cap: "Gold time-series overview"
+#| fig-align: center
+#| out-width: 100%
+knitr::include_graphics("/Users/cycoldiron/Desktop/gold-ts-forecast/figures/01_overview/ts_overview_full.png")
+```
+
+Although explored in greater detail in following section — we transform prices to log returns to obtain an approximately stationary process. This allows us to use ARMA/GARCH methods for mean and variance modeling which would otherwise not be possible using prices which, as @fig-gold-overview demonstrate, is clearly non stationary.
+
+## 2.3 Other Data (Uncertainty Proxies)
+
+For the later descriptive comparison (Section 9), we merge the daily gold return series with two external uncertainty measures:
+
+\(i\) the CBOE Volatility Index (VIX), representing the S&P 500 30-day expected volatility (Data source: FRED). 
+
+\(ii\) the Economic Policy Uncertainty (EPU) developed by Baker, Bloom, and Davis (2016), quantifies policy-related economic uncertainty based on newspaper coverage, tax code provisions, and forecaster disagreement. (Data source: Economic Policy Uncertainty project.)
+
+Both of these indices serve as external benchmarks for periods of elevated uncertainty and are not used in our primary model estimation.
+
+# 3 Methodology
+
+Throughout this paper, to identify the most appropriate model we make general use of the Box and Jenkins (1979) method. This framework for model identification consists three stages:
+
+\(1\) Identification of an appropriate functional form for the model.
+
+\(2\) Estimation of the model parameters (typically using MLE or OLS).
+
+\(3\) Diagnostic checking to assess the fit of the model (i.e, checking residuals autocorrelation)
+
+Our framework will also employ various tests — primarily Diebold and Mariano (1995) — to test the predictive capability of various models.
+
+## 3.1 Model Identification
+
+### 3.1.1 ACF / PACF plots
+
+To confirm our beliefs regarding the underlying data generating processes for both log prices and returns — we make use of the autocorrelation and partial autocorrelation function.
+
+```{r}
+#| label: fig-acfpacf-price
+#| echo: false
+#| fig-cap: "ACF / PACF charts for log prices"
+#| fig-align: center
+#| out-width: 100%
+knitr::include_graphics("/Users/cycoldiron/Desktop/gold-ts-forecast/figures/02_diagnostics/01_acf_pacf/acf_pacf_logprice_full.png")
+
+```
+
+```{r}
+#| label: fig-acfpacf-returns
+#| echo: false
+#| fig-cap: "ACF / PACF charts for log returns"
+#| fig-align: center
+#| out-width: 100%
+knitr::include_graphics("/Users/cycoldiron/Desktop/gold-ts-forecast/figures/02_diagnostics/01_acf_pacf/acf_pacf_logreturns_full.png")
+```
+
+Here, the autocorrelation function measures the linear relationship between gold prices and returns and lagged values versions of itself measured by trading days. @fig-acfpacf-price demonstrates a slowly decaying ACF and PACF with a sharp cut-off at lag 1. In other words, gold price today is highly correlated to values in the past. Yet, once you condition for intermediate values (which the PACF does), there is no longer a significant relationship left. Taken together, these results suggest that log prices are a random walk with a drift.
+
+In contrast, @fig-acfpacf-returns highlights no significant autocorrelation: the rate of return on gold today is uncorrelated to previous days return values. Such results suggest that the underlying data generating process is gausian white noise.
+
+### **3.1.2 Stationary — Augmented Dickey Fuller Test**
+
+While the ACF plots suggest the presence of a unit root (non-stationary) in log prices and a white noise process (stationary) in log returns, it is useful to formally test this assumption.
+
+To do so we make use of the Augmented Dickey Fuller (ADF) test.
+
+Let the ADF regression be $$
+\Delta y_t \;=\; \alpha \;+\; \beta t \;+\; \gamma\, y_{t-1}
+\;+\; \sum_{i=1}^{p} \delta_i\, \Delta y_{t-i}
+\;+\; \varepsilon_t .
+$$
+
+*Null and alternative hypotheses*
+
+$$
+\begin{aligned}
+H_0&:\ \gamma = 0 \quad \text{(unit root; non-stationary)}\\
+H_1&:\ \gamma < 0 \quad \text{(stationary)}
+\end{aligned}
+$$
+
+*(The deterministic terms* $\alpha$ and $\beta t$ may be included or excluded depending on the test variant—none, drift, or trend—but the hypothesis is always on $\gamma$.)
+
+Because of the likely persistence in both processes (i.e, autocorrelation in the residuals) — we employ the augmented test (Dickey & Fuller, 1981) which incorporates lagged versions of delta yt. The number of included lags is chosen based on information criteria (AIC)
+
+```{r}
+#| label: fig-adf-returns
+#| echo: false
+#| fig-cap: "Stationarity Tests: Augmented Dickey Fuller"
+#| fig-align: center
+#| out-width: 100%
+knitr::include_graphics("/Users/cycoldiron/Desktop/gold-ts-forecast/figures/02_diagnostics/02_adf/adf_summary.png")
+```
+
+@fig-adf-returns shows the ADF test statistics, along with corresponding p-values, for gold log prices and returns in four time regimes encompassing thirty-five, fifteen year, seven, and one year. As expected, the optimal number of autoregressive lags (k) is non-zero suggesting the presence of autocorrelation in the residuals and confirming the appropriateness of an Augmented Dickey Fuller Test.
+
+@fig-adf-returns suggests the presence of a unit root as demonstrated by consistently large p-values, suggesting a random walk process. In other words, prices are a function of the previous days value plus a shock. Unsuprinsgly, the small p-values for log returns indicate a stationary process.
+
+### 3.1.3 - White Noise Test
+
+Given the low degree of persistence in log returns — as shown in @fig-acfpacf-returns — Box and Jenkins suggest using Q-statistics to test if a group of autocorrelations is different from zero (i.e, process is not white noise).
+
+```{r}
+#| label: fig-whitenoise-test
+#| echo: false
+#| fig-cap: "White Noise Test"
+#| fig-align: center
+#| out-width: 100%
+knitr::include_graphics("/Users/cycoldiron/Desktop/gold-ts-forecast/figures/02_diagnostics/03_white_noise/lb_white_noise_table.png")
+```
+
+The Ljung–Box Q-statistics in @fig-whitenoise-test test the joint null hypothesis that autocorrelation up to lag L is zero (i.e, process is white noise). For the full 1990–present sample, the null is rejected at the 1% level across all lag lengths (L = 10, 20, 40). However, Box and Jenkins (2016) note that in large samples — such as ours (\>9 000 obs) — the Q-statistic can reject the null for trivially small correlations. Knowing this, we included smaller sample sizes to see if the detected autocorrelation in the 1990 sample can be attributable to its large sample size or sysematic autocorrelation. As shown in rows two and three, once the sample is restricted to post-2010 or post-2018 periods, p-values grow substantially, indicating no significant autocorrelation. In other words, it is likely that the mild autocorrelation seen in the full sample is due to the large sample size — not a consistent linear relationship in residuals. This result is consistent with prior evidence that asset returns are approximately white noise in the mean and that most dependence — if any — arises from conditional heteroskedasticity (Tsay, 2010).
+
+# 3.2 Model Estimation
+
+While our Q-statistics suggest that returns are approximately white noise in the mean, we want to formalize this assumption by testing the goodness-of-fit of a white noise process compared to other candidate models.
+
+```{r}
+#| label: fig-mean-model-comparison
+#| echo: false
+#| fig-cap: "Mean Model Testing"
+#| fig-align: center
+#| out-width: 100%
+knitr::include_graphics("/Users/cycoldiron/Desktop/gold-ts-forecast/figures/02_diagnostics/03_white_noise/mean_model_comparison.png")
+
+```
+
+@fig-mean-model-comparison compares simple mean specifications using information criteria that balances goodness-of-fit with complexity (i.e, penalty for added parameters). AIC slightly prefers ARMA(1,1) wihile BIC (which penalizes complexity more heavily) suggests the white noise mean as the best model.
+
+```{r}
+#| label: fig-mean-LR-test
+#| echo: false
+#| fig-cap: "LR Test: ARMA(1,1) v.s White Noise"
+#| fig-align: center
+#| out-width: 100%
+knitr::include_graphics("/Users/cycoldiron/Desktop/gold-ts-forecast/figures/02_diagnostics/03_white_noise/lrtest_arma11_vs_arma00.png")
+
+```
+
+Thus, we use a Liklihood Ratio test of ARMA(1,1) v.s ARMA(0,0) determine if the extra AR and MA terms add explanatory power. @fig-mean-LR-test suggests that the added parameters are insignificant, providing sufficient evidence to treat gold returns as white noise in the mean.
+
+# 3.3 Diagnostics
+
+Because the mean process is modeled as white noise, the Ljung–Box Q-tests in @fig-whitenoise-test effectively serve as diagnostic checks on the residuals. The results therefore confirm that the mean specification is appropriate, and any remaining dependence likely arises from conditional heteroskedasticity — which we will explore in section XYZ — rather than serial correlation in the mean.
+
+# 4 Structural Breaks (Variance Focus)
+
+Having specified the mean of gold returns as white noise, we now want to ensure a consistent data generating process over our specified time period. To check this assumption, we make use of Bai-Perron (1998) structural break tests — a procedure that finds the optimal quantity and location of all possible breakpoints in a time series.
+
+```{r}
+#| label: fig-baiperron-mean
+#| echo: false
+#| fig-cap: "Structural Break Test on Mean of Gold Returns"
+#| fig-align: center
+#| out-width: 100%
+knitr::include_graphics("/Users/cycoldiron/Desktop/gold-ts-forecast/figures/03_breaks/table_bai_perron_returns_gt.png")
+```
+
+@fig-baiperron-mean shows Bai–Perron multiple mean-break tests for gold log returns across three sample windows (1990–present, 2010–present, and 2018–present). The large p-values (0.07–0.09) esuggest zero breaks, indicating that the mean of gold returns is stable over time—consistent with returns behaving as a stationary, white-noise process.
+
+Having established the mean as both a white-noise process with no structural breaks — our attention will now shift towards exclusively to the variance, and thus volatility, of Gold returns. To identify variance regimes — periods of significant change in the underlying data generating process for the second moment — we employ a multiple change point detection approach using Pruned Exact Linear Time (PELT). This approach — proposed by Prop R. Killick, Fearnhead, and Eckley (2012) —uses a dynamic programming algorthim to find the optimal segmentation for all admissible changepoints.
+
+```{r}
+#| label: fig-PELT-variance
+#| echo: false
+#| fig-cap: "PELT Changepoint Tests"
+#| fig-align: center
+#| out-width: 100%
+knitr::include_graphics("/Users/cycoldiron/Desktop/gold-ts-forecast/figures/03_breaks/variance-breaks-r2_1990-pres.png")
+```
+
+@fig-PELT-variance plots the variance of gold from 1990 to the present, with red dashed lines marking estimated variance change-points identified by the PELT algorithm. Because our process is white noise (i.e, E\[yt\] = 0) the variance (y-axis) is equal to the squared daily return. The data indicate twenty-seven distinct variance regimes over the twenty–five year period and illustrates a clear relationship between financial uncertainty and structural breaks. Notable economic shocks — such as the dot-com bubble (2001), great recession (2007-09) and COVID-19 (2019-20) — are all associated with step-changes in gold's variance. This is consistent with prior literature which shows volatility of gold prices tends to intensify during global crises such as the 1987 stock market crash and the COVID-19 pandemic (Lamouchi & Badkook, 2020)
+
+Moreover, periods of relative economic certainty and sustained growth — such as the great moderation (1980-2007) and great expansion (2009-2020) — are linked to lower volatility and fewer structural breaks. Volatility has been relatively nascent since COVID-19 — experiencing a five-year uninterrupted regime broken by the surge in volatility (and nominal price) in mid-2025, likely driven rising trade tensions, falling consumer sentiment and rising inflation expectations (University of Michigan, Surveys of Consumers, 2025).
+
+@fig-PELT-variance confirms two important points. First, the relationship between economic uncertainty with both distinct, and elevated, volatility regimes. Second, the number and spacing of breaks implies that a single, static variance model is unlikely to be stable over decades. In other words, gold returns exhibit heteroskedasticity (volatility clustering), that must be incorporated properly using a more complex variance model.
+
+# 5 Constructing a Volatility Model
+
+The number and spacing of breaks — as seen in @fig-PELT-variance — implies that a single, static variance model is unlikely to be stable over decades. In other words, gold returns likely exhibit heteroskedasticity (volatility clustering), that must be incorporated properly using a variance model that accounts for such patterns.
+
+To build a parsimonious volatility model, we follow four standard steps in volatility modeling (Kotzé, 2025):
+
+1.  Specify a mean equation after testing for serial dependence in the data.
+
+2.  Make use of the residuals from the mean equation to test for ARCH eects.
+
+3.  Specify a volatility equation. If ARCH effects are statistically significant then perform a joint estimation of the mean and volatility equations.
+
+4.  Check the fitted model carefully and refine it where necessary.
+
+## 5.1 Testing for ARCH effects (Heteroskedasticty)
+
+Having already specified the mean equation (white-noise log returns), we next test whether the variance of gold returns is conditionally heteroskedastic. Put simply, is volatility today a function of its past self? Such a relationship would imply time-varying volatility rather than constant variance.
+
+To test for volatility clustering we examine whether the squared residuals exhibit serial correlation using the ARCH-LM test (Engle 1982).
+
+Given the following linear regression, which regresses the current squared residual on lagged versions of itself
+
+$$
+a_t^2 = \alpha_0 + \alpha_1 a_{t-1}^2 + \alpha_2 a_{t-2}^2 + \dots + \alpha_m a_{t-m}^2 + \varepsilon_t
+$$
+
+We test the null hypothesis of homoskedasticty:
+
+$$
+H_0: \alpha_1 = \alpha_2 = \dots = \alpha_m = 0 
+\quad \text{(no ARCH effects; homoskedastic variance)}
+$$
+
+Rejection of $$
+H_0 $$ implies the presence of some degree of conditional heteroskedastity (ie, today's variance is correlated to lagged versions of itself)
+
+```{r}
+#| label: fig-archlm
+#| echo: false
+#| fig-cap: "ARCH-LM test for conditional heteroskedasticity"
+#| fig-align: center
+#| out-width: 100%
+knitr::include_graphics("/Users/cycoldiron/Desktop/gold-ts-forecast/figures/04_models/01_arch_garch/02_arch_lm_test.png")
+```
+
+@fig-archlm reports the F-statistics and p-values for lags 6, 12, and 24. The small p-values across all lags suggest the presence of homoskedasticty, providing strong evidence of volatility clustering in gold returns— i.e, large shocks tend to be followed by large shocks.
+
+```{r}
+#| label: fig-arch-acf
+#| echo: false
+#| fig-cap: "ACF of Squared Returns"
+#| fig-align: center
+#| out-width: 100%
+knitr::include_graphics("/Users/cycoldiron/Desktop/gold-ts-forecast/figures/04_models/01_arch_garch/04_acf_rsq.png")
+```
+
+@fig-arch-acf visualizes this dependency — plotting the ACF of squared returns across various lags (trading days). The consistently significant autocorrealations confirms the need to fit an ARCH-type volatility model — which incorporates the conditional dependency in the second moment.
+
+## 5.2 Specifying an ARCH Model
+
+Given the presence of volatility clustering we proceed with to identifying the most parsimonious conditional variance model.
+
+To identify the degree of persistence (ARCH order) in potential candidate models, we make use of the PACF of squared returns.
+
+```{r}
+#| label: fig-arch-pacf
+#| echo: false
+#| fig-cap: "PACF of Squared Returns"
+#| fig-align: center
+#| out-width: 100%
+knitr::include_graphics("/Users/cycoldiron/Desktop/gold-ts-forecast/figures/04_models/01_arch_garch/03_pacf_rsq.png")
+```
+
+@fig-arch-pacf shows a moderately decaying PACF, with significant autocorrelations up to lag 10. Nonetheless, the sharp initial spike and gradual decay suggest that a lower order ARCH process (q = 1-3) provides a constructive starting point. If higher order processes are deemed more parsimonious than further exploration of higher-order processes may be necessary.
+
+For our preliminary model testing, we will consider five iterations of conditional heteroskedastic (ARCH) models:
+
+1.  ARCH(q): Volatility today is a weighted sum of the last q squared shocks.
+
+2.  GARCH(p,q): Adds lagged variance terms to ARCH (longer memory in volatility).
+
+3.  IGARCH(1,1):GARCH process with a unit root (shocks have permanent effects).
+
+4.  GJR-GARCH(1,1): GARCH prcoess with a asymmetry term to allow for uneven volatility responses to positive or negative shocks.
+
+5.  EGARCH(1,1): GARCH process that models the log variance, while having an asymmetry term.
+
+```{r}
+#| label: fig-baseline-model-testing
+#| echo: false
+#| fig-cap: "Baseline Variance Model Testing"
+#| fig-align: center
+#| out-width: 100%
+knitr::include_graphics("/Users/cycoldiron/Desktop/gold-ts-forecast/figures/04_models/01_arch_garch/05_variance_model_ic.png")
+```
+
+@fig-baseline-model-testing shows the information criteria of various candidate models suggesting that EGARCH(1,1) -t is the best fitting specification.
+
+To understand the significance — or broader implications — of an exponential GARCH model (EGARCH) being the best performing model, we need to examine its two key attributes
+
+1\) Guaranteed Positivity
+
+-   By modeling log variance, we ensure that the variance is always positive.
+
+2\) Asymmetric responses
+
+-   The gamma term allows for variance to react differently to positive and negative shocks.
+
+In other words, EGARCH predicts how log variance evolves over time — making it smoother (less-sensitive to shocks), always positive, and able to capture the fact that volatility often reacts differently to positive and negative shocks.
+
+```{r}
+#| label: fig-egarch-params
+#| echo: false
+#| fig-cap: "Baseline Model — Parameter Summary"
+#| fig-align: center
+#| out-width: 100%
+knitr::include_graphics("/Users/cycoldiron/Desktop/gold-ts-forecast/figures/04_models/01_arch_garch/06_fit_summary_params.png")
+```
+
+@fig-egarch-paramsn shows the maximum likelihood estimates for the six models parameters — all of which are statistically significant. The average return of gold (mu) shows a tiny coefficient (0.0002) — implying that gold returns geometrically compounds (roughly 5% a year). It also indicates that our white noise mean model has a minuscule positive drift.
+
+The long-run level (omega) highlights the baseline level of volatility. Its negative value implies, without shocks, log variance tends to be below zero and relatively moderate. Moreover, the short-run reaction coeffient (alpha 1 = 0.368) — also described as the ARCH effect — shows that conditional volatility changes moderately to new shocks.
+
+The GARCH effect, (B1 = 0.993), indicates that volatility is highly persistent. In other words, high volatility yesterday tends to be followed by high volatility today.
+
+The leverage effect (gamma) measures the degree to which volatility reacts differently to positive v.s negative returns. The positive value (gamma = .12) indicates that positive shocks (ie, higher gold returns) are associated with greater changes in volatility than negative ones. This dynamic — which can be characterized as a "reverse leverage effect" — is antithetical to most equities which tend to exhibit greater volatility in response to negative returns. Such an effect suggests gold's volatility rises during bullish periods — consistent with the narrative of being a safe-haven asset during periods of economic uncertainty. This is an important finding that we will explore in more depth in SECTION XYZ.
+
+Finally, the shape parameter f the Student-t distribution (v =4.39) suggests the presence of fat tails. In other words, significant deviations are far more pronounced, and likely, than they would be under a normal distribution. Such an effect illustrates that Gold has a tendency for large irregular swings in its volatility — likely due to its correlation with macro and geopolitical shocks.
+
+## 5.3 Diagnostics on Candidate Model
+
+Information criteria in the preceding section suggests (EGARCH(1,1) is the best performing candidate model. However, conventional volatility modeling framework (Kotzé, 2025) suggests performing diagnostic checks on the residuals.
+
+To do so, we make use of two tests:
+
+1.  Ljung–Box Q-test on squared standardized residuals(H₀: no autocorrelation in r²—i.e., no ARCH effect.
+
+2.  EngleARCH–LM test on standardized residuals (H₀: no ARCH effects up to lag m).
+
+Large test statistics (small p-values) would suggest that our model is insufficient in describing ARCH effects: ie, there is leftover conditional dependence in the variance.
+
+```{r}
+#| label: fig-egarch-diagnostics
+#| echo: false
+#| fig-cap: "EGARCH(1,1) - T: Diagnostics"
+#| fig-align: center
+#| out-width: 100%
+knitr::include_graphics("/Users/cycoldiron/Desktop/gold-ts-forecast/figures/04_models/01_arch_garch/egarch11_residual_diagnostics_COMPACT.png")
+```
+
+To do so
+
+## 5.4 Refining Model
+
+# 5 Evidence of Conditional Heteroskedastcity
+
+# 6 Variance Modeling
+
+# 7 Break-AwareVariance Modeling
+
+# 8 Forecast Design & Evaluation
