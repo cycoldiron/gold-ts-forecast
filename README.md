@@ -23,29 +23,21 @@ gold-ts-forecast/
 ├── .RData
 ├── .Rhistory
 ├── .Rprofile
-├── gold-ts-forecast.Rproj
-├── LICENSE
-├── README.md
-├── README.html
-├── renv/
-├── renv.lock
 ├── data/
 ├── drafts/
-│   ├── 01_draft.qmd
-│   ├── 01_draft.pdf
-│   ├── 01_draft.html
 │   ├── 01_draft_files/
+│   ├── 01_draft.html
+│   ├── gold_volatility_paper_2026-01-07.qmd
 │   └── images/
-├── figures/
-│   ├── 01_overview/
-│   ├── 02_diagnostics/
-│   ├── 03_breaks/
-│   ├── 04_models/
-│   ├── 05_forecasts/
-│   ├── 06_variance_model_diagnostics/
-│   └── 07_uncertainty_figures/
-├── results/
-│   └── diagnostics/
+├── gold_volatility_paper_2026-01-07.pdf
+├── gold-ts-forecast.Rproj
+├── LICENSE
+├── README.html
+├── README.md
+├── renv/
+├── renv.lock
+└── scripts/
+
 └── scripts/
     ├── 01_get_economic_data.R.R
     ├── 02_clean_transform_economic.R
@@ -79,8 +71,3 @@ gold-ts-forecast/
 |     |
 |-----|
 |     |
-
-**Cy Coldiron**\
-B.A. Economics; Statistics & Data Science — **UC Santa Barbara**\
-Visiting Student — **University of Cape Town**\
-*Time-Series Econometrics Project · 2025*
