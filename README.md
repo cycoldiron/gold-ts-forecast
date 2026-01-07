@@ -1,18 +1,8 @@
----
-editor_options: 
-  markdown: 
-    wrap: sentence
----
-
 # Gold Time Series Forecasting
 
 ## Overview
 
-This project focuses on modeling the volatility process in gold returns and mapping volatility regimes over time.
-I use various statistical & econometric methods to (i) identify unique volatility regimes (ii) characterize how volatility behaves within each regime (clustering, persistence, leverage effects), and (iii) generate regime-specific forecasts.
-Analyses are run across three windows (1990–present, 2010–present, 2018–Oct 2025).
-
-## Repository Structure
+This project focuses on modeling the volatility process in gold returns and mapping volatility regimes over time. I use various statistical & econometric methods to (i) identify unique volatility regimes (ii) characterize how volatility behaves within each regime (clustering, persistence, leverage effects), and (iii) generate regime-specific forecasts. Analyses are run across three windows (1990–present, 2010–present, 2018–Oct 2025).
 
 ``` text
 ## Repository structure
