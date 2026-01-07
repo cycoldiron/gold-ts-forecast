@@ -64,10 +64,12 @@ gold-ts-forecast/
     └── 17_break_data.R
 ```
 
-+--------------------------------------------------------+
-| **Cy Coldiron**\                                       |
-| University of California, Santa Barbara\               |
-| B.A. – Statistics and Data Science, Economics          |
-|                                                        |
-| [coldiron\@ucsb.edu](mailto:coldiron@ucsb.edu){.email} |
-+--------------------------------------------------------+
+|     |
+|-----|
+|     |
+
+**Cy Coldiron**\
+University of California, Santa Barbara\
+B.A. – Statistics and Data Science, Economics
+
+[coldiron\@ucsb.edu](mailto:coldiron@ucsb.edu){.email}
