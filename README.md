@@ -72,4 +72,4 @@ gold-ts-forecast/
 University of California, Santa Barbara\
 B.A. – Statistics and Data Science, Economics
 
-[coldiron\@ucsb.edu](mailto:coldiron@ucsb.edu){.email}
+coldiron\@ucsb.edu
