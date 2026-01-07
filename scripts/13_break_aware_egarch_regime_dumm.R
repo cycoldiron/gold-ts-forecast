@@ -389,19 +389,28 @@ write_csv(select(OOS_regime_merged, date, regime_id, break_start, r2, sig2), tra
 date_range <- paste0(min(Z$date), " – ", max(Z$date))
 n_eval     <- nrow(Z)
 
-# Accuracy table UI (Option B names already baked into acc_tbl)
+# Accuracy table UI (clean title, single note, highlight best QLIKE)
+best_model <- acc_tbl$Model[which.min(acc_tbl$QLIKE)]
+
 acc_gt <- acc_tbl |>
   gt(rowname_col = "Model") |>
   fmt_number(columns = c(RMSE, MAE, QLIKE, `ΔQLIKE vs Baseline`),
              decimals = 6, drop_trailing_zeros = TRUE) |>
   tab_header(
-    title = md("**OOS Variance Forecast Accuracy — EGARCH(1,1)–t (all variants)**"),
+    title = md("**Variance Forecast Accuracy — EGARCH(1,1)–t (all variants)**"),
     subtitle = md(paste0("Evaluation window: ", date_range, " &nbsp;&nbsp;|&nbsp;&nbsp; n = ", n_eval))
   ) |>
-  tab_source_note(md("Lower is better for all metrics. QLIKE is a log-loss and can be negative.")) |>
-  tab_source_note(md("Break-aware (Regime-refit) models are per-regime **ugarchroll** re-estimates using PELT breaks.")) |>
-  tab_source_note(md("Variance-Dummy uses a single **ugarchroll** with a break dummy in the **variance** equation.")) |>
+  tab_source_note(md("Lower is better for all metrics.")) |>
+  # highlight the row with the lowest QLIKE
+  tab_style(
+    style = list(cell_fill(color = "#FFF59D")),
+    locations = list(
+      cells_body(rows = Model == best_model),
+      cells_stub(rows = Model == best_model)
+    )
+  ) |>
   tab_options(table.font.size = px(13), data_row.padding = px(5))
+
 
 # DM table UI
 dm_gt <- dm_df |>
